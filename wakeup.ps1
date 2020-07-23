@@ -1,43 +1,44 @@
-$key = Get-Content key.txt
+function Alarm {
 
-$url = ("https://www.googleapis.com/youtube/v3/playlistItems?key={0}&part=snippet&maxResults=50&playlistId=PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7" -f $key)
+    $key = Get-Content "~\wakeup\key"
+    $url = ("https://www.googleapis.com/youtube/v3/playlistItems?key={0}&part=snippet&maxResults=50&playlistId=PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7" -f $key)
 
-$totalResults = (Invoke-RestMethod `
-                    -Uri $url `
-                    -Method Get `
-                    -UseBasicParsing).pageInfo.totalResults
-
-$resultsPerPage = (Invoke-RestMethod `
-                    -Uri $url `
-                    -Method Get `
-                    -UseBasicParsing).pageInfo.resultsPerPage
-
-$step = [math]::truncate($totalResults/$resultsPerPage)
-
-$nextPageToken = (Invoke-RestMethod `
+    $totalResults = (Invoke-RestMethod `
                         -Uri $url `
                         -Method Get `
-                        -UseBasicParsing).nextPageToken
+                        -UseBasicParsing).pageInfo.totalResults
 
-$tokens += @($null)
+    $resultsPerPage = (Invoke-RestMethod `
+                        -Uri $url `
+                        -Method Get `
+                        -UseBasicParsing).pageInfo.resultsPerPage
 
-for ($i = 0; $i -lt $step; $i++ ) {
-
-    $tokens += $nextPageToken
+    $step = [math]::truncate($totalResults/$resultsPerPage)
 
     $nextPageToken = (Invoke-RestMethod `
-                        -Uri ('{0}&pageToken={1}' -f $url, $nextPageToken) `
-                        -Method Get `
-                        -UseBasicParsing).nextPageToken
+                            -Uri $url `
+                            -Method Get `
+                            -UseBasicParsing).nextPageToken
 
-}
+    $tokens += @($null)
 
-$songs = $tokens | ForEach-Object {
-    (Invoke-RestMethod `
-            -Uri ('{0}&pageToken={1}' -f $url, $_) `
-            -Method Get `
-            -UseBasicParsing).items.snippet.resourceId.videoId
-}
+    for ($i = 0; $i -lt $step; $i++ ) {
+
+        $tokens += $nextPageToken
+
+        $nextPageToken = (Invoke-RestMethod `
+                            -Uri ('{0}&pageToken={1}' -f $url, $nextPageToken) `
+                            -Method Get `
+                            -UseBasicParsing).nextPageToken
+
+    }
+
+    $songs = $tokens | ForEach-Object {
+        (Invoke-RestMethod `
+                -Uri ('{0}&pageToken={1}' -f $url, $_) `
+                -Method Get `
+                -UseBasicParsing).items.snippet.resourceId.videoId
+    }
 
 Add-Type -TypeDefinition @'
 
@@ -86,36 +87,40 @@ public class Audio {
 '@
 
 
-$number = 0
+    $number = 0
 
-while ($true) {
+    while ($true) {
 
-    switch ($number) {
-        { 0..1 -contains $_ } { [audio]::Volume = 0.25 }
-        { 2..3 -contains $_ } { [audio]::Volume = 0.50 }
-        { 4..5 -contains $_ } { [audio]::Volume = 0.75 }
-        default { [audio]::Volume = 1.0 }
+        switch ($number) {
+            { 0..1 -contains $_ } { [audio]::Volume = 0.25 }
+            { 2..3 -contains $_ } { [audio]::Volume = 0.50 }
+            { 4..5 -contains $_ } { [audio]::Volume = 0.75 }
+            default { [audio]::Volume = 1.0 }
+        }
+
+      $randomSong = $(Get-Random $songs)
+
+      $duration = (Invoke-RestMethod `
+                            -Uri ("https://www.googleapis.com/youtube/v3/videos?id={0}&part=contentDetails&key={1}" -f $randomSong, $key) `
+                            -Method Get `
+                            -UseBasicParsing).items.contentDetails.duration
+
+      $durationTime = [Regex]::new('[0-9]+[A-Za-z]+[0-9]+').Matches($duration)
+      $min = [Regex]::new('\b[0-9]+').Matches($durationTime).Value
+      $sec = [Regex]::new('\B[0-9]+').Matches($durationTime).Value
+
+      $durationSec = $([int]$min * 60) + [int]$sec
+
+      Start-Process chrome.exe -ArgumentList ('--new-window https://music.youtube.com/watch?v={0}&list=PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7' -f $randomSong)
+
+      Start-Sleep -s 15 # $($durationSec + 5)
+
+      Get-Process | ForEach-Object { if ($_.name -like '*chrome*') { Stop-Process $_.id -ErrorAction SilentlyContinue} }
+
+      $number++
+
     }
 
-   $randomSong = $(Get-Random $songs)
-   
-   $duration = (Invoke-RestMethod `
-                        -Uri ("https://www.googleapis.com/youtube/v3/videos?id={0}&part=contentDetails&key={1}" -f $randomSong, $key) `
-                        -Method Get `
-                        -UseBasicParsing).items.contentDetails.duration
-   
-   $durationTime = [Regex]::new('[0-9]+[A-Za-z]+[0-9]+').Matches($duration)
-   $min = [Regex]::new('\b[0-9]+').Matches($durationTime).Value
-   $sec = [Regex]::new('\B[0-9]+').Matches($durationTime).Value
-
-  $durationSec = $([int]$min * 60) + [int]$sec
-
-   Start-Process firefox.exe ("https://www.youtube.com/watch?v={0}&list=PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7" -f $randomSong)
-
-   Start-Sleep -s $($durationSec + 5)
-
-   Get-Process | ForEach-Object { if ($_.name -like '*firefox*') { Stop-Process $_.id } }
-
-   $number++
-
 }
+
+Alarm
