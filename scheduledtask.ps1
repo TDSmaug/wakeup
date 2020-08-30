@@ -56,12 +56,31 @@ public class Audio {
 
 }
 
+function Write-Log {
+    param(
+        [string]$text,
+        [string]$tofile
+    )
+
+    if (!(Get-ChildItem ('{0}\EasyMorning\logs' -f $ENV:USERPROFILE) -ErrorAction SilentlyContinue)) {
+
+        New-Item -ItemType Directory -Force -Path ('{0}\EasyMorning\logs' -f $ENV:USERPROFILE) | Out-Null
+
+    }
+
+    Write-Output "$(Get-Date) $text" >> ('{0}\EasyMorning\logs\{1} - {2}.txt' `
+        -f $ENV:USERPROFILE, (Get-Date).ToString("dd.MM.yyyy"), $tofile)
+}
+
 
 function Alarm {
+
+    MyVolume -ErrorAction SilentlyContinue
 
     $key      = Get-Content ('{0}\key' -f $PSScriptRoot)
     $url      = 'https://www.googleapis.com/youtube/v3'
     $playlist = 'PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7'
+    $channelId = 'UC7JhGDJEJquPoXT4mWc7rfQ'
 
     $totalResults = (
 
@@ -115,55 +134,74 @@ function Alarm {
         ).items.snippet
     }
 
+    $myplaylists = (
+        
+    Invoke-RestMethod `
+        -Uri ('{0}/playlists?key={1}&part=snippet&maxResults=50&channelId={2}' -f $url, $key, $channelId) `
+        -Method Get `
+        -UseBasicParsing
+    ).items
+
+    $awesome = $myplaylists | ForEach-Object {
+        if ($_.id -contains $playlist) {
+            $_.snippet.title
+        }
+    }
+
+    $AudioSaveLocation = "$ENV:USERPROFILE\Music\$awesome"
+    $CacheFolder = "$ENV:USERPROFILE\EasyMorning\cache"
     $number = 0
 
-    while ($true) {
+    $songs | ForEach-Object {
+
+        if (($_).resourceId.videoId -notcontains '7X1L8_MDj4I' ) {
+
+            if (Get-ChildItem ('{0}\{1}.mp3' -f $AudioSaveLocation, (($_).title -replace '"', '''' -replace '\?', '')) -ErrorAction SilentlyContinue) {
+                Write-Log ('"{0}" is present' -f ($_).title) 'logs'
+            }
+
+            else {
+                Write-Log ('"{0}"...' -f ($_).title) 'logs'
+
+                $URLToDownload = ('https://music.youtube.com/watch?v={0}&list=PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7' -f $(($_).resourceId.videoId))
+
+                youtube-dl -o "$AudioSaveLocation\%(title)s.%(ext)s" `
+                    --ignore-errors --no-mtime --quiet --no-warnings --no-playlist `
+                    --cache-dir "$CacheFolder" -x --audio-format mp3 --audio-quality 0 `
+                    --metadata-from-title "(?P<artist>.+?) - (?P<title>.+)" `
+                    --add-metadata --prefer-ffmpeg "$URLToDownload"
+
+                if (Get-ChildItem ('{0}\{1}.mp3' -f $AudioSaveLocation, (($_).title -replace '"', '''' -replace '\?', '')) -ErrorAction SilentlyContinue) {
+                    Write-Log ('"{0}" has been downloaded' -f ($_).title) 'logs'
+                }
+                else {
+                    Write-Log ('"{0}" is unavailable' -f ($_).title) 'errorlogs'
+                }
+            }
+        }
+    }
+
+    ((Get-ChildItem $AudioSaveLocation).FullName | Sort-Object {Get-Random}) | ForEach-Object {
+        
+        $number++
 
         switch ($number) {
 
-            { 0..1 -contains $_ } { [audio]::Volume = 0.25 }
-
-            { 2..3 -contains $_ } { [audio]::Volume = 0.50 }
-
-            { 4..5 -contains $_ } { [audio]::Volume = 0.75 }
+            { 1..9 -contains $_ } { [audio]::Volume = ('0.{0}' -f $_ ) }
 
             default { [audio]::Volume = 1.0 }
 
         }
-        $randomSong = (Get-Random $songs)
-
-        $duration = (
-
-            Invoke-RestMethod `
-                -Uri ('{0}/videos?id={1}&part=contentDetails&key={2}' -f $url, $(($randomSong).resourceId.videoId), $key) `
-                -Method Get `
-                -UseBasicParsing
-
-        ).items.contentDetails.duration
-
-        $durationTime  = [Regex]::new('[0-9]+[A-Za-z]+[0-9]+').Matches($duration)
-        $durationMin   = [Regex]::new('\b[0-9]+').Matches($durationTime).Value
-        $durationSec   = [Regex]::new('\B[0-9]+').Matches($durationTime).Value
-        $durationTotal = $([int]$durationMin * 60) + [int]$durationSec
-
-        Start-Process chrome.exe -ArgumentList ('--new-window https://music.youtube.com/watch?v={0}&list=PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7' -f $(($randomSong).resourceId.videoId))
-
-        Write-Output ('"{0}" is playing now. Enjoy ^_^' -f ($randomSong).title)
-
-        Start-Sleep -s $($durationTotal + 5)
-
-        Get-Process | ForEach-Object {
-
-            if ($_.name -like '*chrome*') {
-
-                Stop-Process $_.id -ErrorAction SilentlyContinue
-
-            }
-
-        }
-
-        $number++
-
+        
+        Add-Type -AssemblyName presentationCore
+        $mediaPlayer = New-Object system.windows.media.mediaplayer
+        $mediaPlayer.open($_)
+        Start-Sleep -s 2
+        $duration = $mediaPlayer.NaturalDuration.TimeSpan.TotalSeconds
+        $mediaPlayer.Play()
+        Start-Sleep -s ([Math]::Truncate(($duration + 0.5)))
+        $mediaPlayer.Stop()
+        $mediaPlayer.Close()
     }
 
 }
@@ -190,8 +228,10 @@ function WakeToRun {
 
 function SheduleTask {
 
+    WakeToRun
+
     $taskName = 'WakeUp'
-    $Trigger = New-ScheduledTaskTrigger -At 8:15am -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday
+    $Trigger = New-ScheduledTaskTrigger -At 9:30am -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday
     $Action = New-ScheduledTaskAction -Execute "powershell" -Argument "$PSCommandPath -alarm"
     $Settings = New-ScheduledTaskSettingsSet -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -Hidden
     $Principal = New-ScheduledTaskPrincipal -UserId "$($env:USERDOMAIN)\$($env:USERNAME)" -LogonType S4U -RunLevel Highest
@@ -222,14 +262,12 @@ function SheduleTask {
 
 if ($alarm -eq $true) {
 
-    MyVolume -ErrorAction SilentlyContinue
     Alarm
 
 }
 
 else {
 
-    WakeToRun
     SheduleTask
 
 }
