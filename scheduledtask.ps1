@@ -73,6 +73,25 @@ function Write-Log {
 }
 
 
+function Invoke-MyRestMethod {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$url,
+        [Parameter(Mandatory=$true)]
+        [string]$key,
+        [Parameter(Mandatory=$true)]
+        [string]$playlist,
+        [Parameter(Mandatory=$false)]
+        [string]$nextPageToken
+    )
+
+    Invoke-RestMethod `
+        -Uri ('{0}/playlistItems?key={1}&part=snippet&maxResults=50&playlistId={2}&pageToken={3}' -f $url, $key, $playlist, $nextPageToken) `
+        -Method Get `
+        -UseBasicParsing
+}
+
+
 function Alarm {
 
     MyVolume -ErrorAction SilentlyContinue
@@ -80,32 +99,14 @@ function Alarm {
     $key      = Get-Content ('{0}\key' -f $PSScriptRoot)
     $url      = 'https://www.googleapis.com/youtube/v3'
     $playlist = 'PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7'
-    $channelId = 'UC7JhGDJEJquPoXT4mWc7rfQ'
 
-    $totalResults = (
+    $totalResults = (Invoke-MyRestMethod $url $key $playlist).pageInfo.totalResults
 
-        Invoke-RestMethod `
-            -Uri ('{0}/playlistItems?key={1}&part=snippet&maxResults=50&playlistId={2}' -f $url, $key, $playlist) `
-            -Method Get `
-            -UseBasicParsing
-
-    ).pageInfo.totalResults
-
-    $resultsPerPage = (
-
-        Invoke-RestMethod `
-            -Uri ('{0}/playlistItems?key={1}&part=snippet&maxResults=50&playlistId={2}' -f $url, $key, $playlist) `
-            -Method Get `
-            -UseBasicParsing
-
-    ).pageInfo.resultsPerPage
+    $resultsPerPage = (Invoke-MyRestMethod $url $key $playlist).pageInfo.resultsPerPage
 
     $step = [math]::truncate($totalResults/$resultsPerPage)
 
-    $nextPageToken = (Invoke-RestMethod `
-                        -Uri ('{0}/playlistItems?key={1}&part=snippet&maxResults=50&playlistId={2}' -f $url, $key, $playlist) `
-                        -Method Get `
-                        -UseBasicParsing).nextPageToken
+    $nextPageToken = (Invoke-MyRestMethod $url $key $playlist).nextPageToken
 
     $tokens += @($null)
 
@@ -113,26 +114,17 @@ function Alarm {
 
         $tokens += $nextPageToken
 
-        $nextPageToken = (
-
-        Invoke-RestMethod `
-            -Uri ('{0}/playlistItems?key={1}&part=snippet&maxResults=50&playlistId={2}&pageToken={3}' -f $url, $key, $playlist, $nextPageToken) `
-            -Method Get `
-            -UseBasicParsing
-
-        ).nextPageToken
+        $nextPageToken = (Invoke-MyRestMethod $url $key $playlist $nextPageToken).nextPageToken
 
     }
 
     $songs = $tokens | ForEach-Object {
-        (
-            Invoke-RestMethod `
-                -Uri ('{0}/playlistItems?key={1}&part=snippet&maxResults=50&playlistId={2}&pageToken={3}' -f $url, $key, $playlist, $_) `
-                -Method Get `
-                -UseBasicParsing
 
-        ).items.snippet
+        (Invoke-MyRestMethod $url $key $playlist $_).items.snippet
+
     }
+
+    $channelId = (Invoke-MyRestMethod $url $key $playlist).items.snippet[0].channelId
 
     $myplaylists = (
         
@@ -142,13 +134,13 @@ function Alarm {
         -UseBasicParsing
     ).items
 
-    $awesome = $myplaylists | ForEach-Object {
+    $playlistTitle = $myplaylists | ForEach-Object {
         if ($_.id -contains $playlist) {
             $_.snippet.title
         }
     }
 
-    $AudioSaveLocation = "$ENV:USERPROFILE\Music\$awesome"
+    $AudioSaveLocation = "$ENV:USERPROFILE\Music\$playlistTitle"
     $CacheFolder = "$ENV:USERPROFILE\EasyMorning\cache"
     $number = 0
 
