@@ -142,18 +142,17 @@ function Alarm {
 
     $AudioSaveLocation = "$ENV:USERPROFILE\Music\$playlistTitle"
     $CacheFolder = "$ENV:USERPROFILE\EasyMorning\cache"
-    $number = 0
 
     $songs | ForEach-Object {
 
         if (($_).resourceId.videoId -notcontains '7X1L8_MDj4I' ) {
 
             if (Get-ChildItem ('{0}\{1}.mp3' -f $AudioSaveLocation, (($_).title -replace '"', '''' -replace '\?', '')) -ErrorAction SilentlyContinue) {
-                Write-Log ('"{0}" is present' -f ($_).title) 'logs'
+                Write-Log ('Present: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'oklogs'
             }
 
             else {
-                Write-Log ('"{0}"...' -f ($_).title) 'logs'
+                Write-Log ('Absent: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'logs'
 
                 $URLToDownload = ('https://music.youtube.com/watch?v={0}&list=PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7' -f $(($_).resourceId.videoId))
 
@@ -164,30 +163,27 @@ function Alarm {
                     --add-metadata --prefer-ffmpeg "$URLToDownload"
 
                 if (Get-ChildItem ('{0}\{1}.mp3' -f $AudioSaveLocation, (($_).title -replace '"', '''' -replace '\?', '')) -ErrorAction SilentlyContinue) {
-                    Write-Log ('"{0}" has been downloaded' -f ($_).title) 'logs'
+                    Write-Log ('Dowloaded: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'logs'
                 }
                 else {
-                    Write-Log ('"{0}" is unavailable' -f ($_).title) 'errorlogs'
+                    Write-Log ('Unavailable: {0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'errorlogs'
                 }
             }
         }
     }
 
-    ((Get-ChildItem $AudioSaveLocation).FullName | Sort-Object {Get-Random}) | ForEach-Object {
-        
-        $number++
+    $number = 0
 
-        switch ($number) {
+    ((Get-ChildItem $AudioSaveLocation) | Sort-Object { Get-Random } ) | ForEach-Object {
 
-            { 1..9 -contains $_ } { [audio]::Volume = ('0.{0}' -f $_ ) }
+        if ($number -lt 10) { $number++ }
 
-            default { [audio]::Volume = 1.0 }
-
-        }
+        [audio]::Volume = ($number * 0.1)
+        Write-Log ('Playing({0}%) : "{1}"' -f $($number * 10), ($_).Name) 'playlogs'
         
         Add-Type -AssemblyName presentationCore
         $mediaPlayer = New-Object system.windows.media.mediaplayer
-        $mediaPlayer.open($_)
+        $mediaPlayer.open(($_).FullName)
         Start-Sleep -s 2
         $duration = $mediaPlayer.NaturalDuration.TimeSpan.TotalSeconds
         $mediaPlayer.Play()
