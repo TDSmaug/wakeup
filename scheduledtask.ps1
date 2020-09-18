@@ -96,80 +96,99 @@ function Alarm {
 
     MyVolume -ErrorAction SilentlyContinue
 
-    $key      = Get-Content ('{0}\key' -f $PSScriptRoot)
-    $url      = 'https://www.googleapis.com/youtube/v3'
-    $playlist = 'PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7'
+    $adapters = @('Wi-Fi', 'Ethernet')
 
-    $totalResults = (Invoke-MyRestMethod $url $key $playlist).pageInfo.totalResults
-
-    $resultsPerPage = (Invoke-MyRestMethod $url $key $playlist).pageInfo.resultsPerPage
-
-    $step = [math]::truncate($totalResults/$resultsPerPage)
-
-    $nextPageToken = (Invoke-MyRestMethod $url $key $playlist).nextPageToken
-
-    $tokens += @($null)
-
-    for ($i = 0; $i -lt $step; $i++ ) {
-
-        $tokens += $nextPageToken
-
-        $nextPageToken = (Invoke-MyRestMethod $url $key $playlist $nextPageToken).nextPageToken
-
-    }
-
-    $songs = $tokens | ForEach-Object {
-
-        (Invoke-MyRestMethod $url $key $playlist $_).items.snippet
-
-    }
-
-    $channelId = (Invoke-MyRestMethod $url $key $playlist).items.snippet[0].channelId
-
-    $myplaylists = (
-        
-    Invoke-RestMethod `
-        -Uri ('{0}/playlists?key={1}&part=snippet&maxResults=50&channelId={2}' -f $url, $key, $channelId) `
-        -Method Get `
-        -UseBasicParsing
-    ).items
-
-    $playlistTitle = $myplaylists | ForEach-Object {
-        if ($_.id -contains $playlist) {
-            $_.snippet.title
+    $net = (Get-NetAdapter) | ForEach-Object {
+        foreach ($i in $adapters) {
+            if ($_.Name -contains $i) {
+                if ($_.Status -contains 'Up') { $_.Status }
+            }
         }
-    }
+    } | Get-Unique
 
-    $AudioSaveLocation = "$ENV:USERPROFILE\Music\$playlistTitle"
+    $AudioSaveLocation = "$ENV:USERPROFILE\Music\AWESOME"
     $CacheFolder = "$ENV:USERPROFILE\EasyMorning\cache"
 
-    $songs | ForEach-Object {
+    if ($net -contains 'Up') {
 
-        if (($_).resourceId.videoId -notcontains '7X1L8_MDj4I' ) {
+        $key      = Get-Content ('{0}\key' -f $PSScriptRoot)
+        $url      = 'https://www.googleapis.com/youtube/v3'
+        $playlist = 'PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7'
 
-            if (Get-ChildItem ('{0}\{1}.mp3' -f $AudioSaveLocation, (($_).title -replace '"', '''' -replace '\?', '')) -ErrorAction SilentlyContinue) {
-                Write-Log ('Present: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'oklogs'
+        $totalResults = (Invoke-MyRestMethod $url $key $playlist).pageInfo.totalResults
+
+        $resultsPerPage = (Invoke-MyRestMethod $url $key $playlist).pageInfo.resultsPerPage
+
+        $step = [math]::truncate($totalResults/$resultsPerPage)
+
+        $nextPageToken = (Invoke-MyRestMethod $url $key $playlist).nextPageToken
+
+        $tokens += @($null)
+
+        for ($i = 0; $i -lt $step; $i++ ) {
+
+            $tokens += $nextPageToken
+
+            $nextPageToken = (Invoke-MyRestMethod $url $key $playlist $nextPageToken).nextPageToken
+
+        }
+
+        $songs = $tokens | ForEach-Object {
+
+            (Invoke-MyRestMethod $url $key $playlist $_).items.snippet
+
+        }
+
+        $channelId = (Invoke-MyRestMethod $url $key $playlist).items.snippet[0].channelId
+
+        $myplaylists = (
+            
+        Invoke-RestMethod `
+            -Uri ('{0}/playlists?key={1}&part=snippet&maxResults=50&channelId={2}' -f $url, $key, $channelId) `
+            -Method Get `
+            -UseBasicParsing
+        ).items
+
+        $playlistTitle = $myplaylists | ForEach-Object {
+            if ($_.id -contains $playlist) {
+                $_.snippet.title
             }
+        }
 
-            else {
-                Write-Log ('Absent: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'logs'
+        $AudioSaveLocation = "$ENV:USERPROFILE\Music\$playlistTitle"
 
-                $URLToDownload = ('https://music.youtube.com/watch?v={0}&list=PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7' -f $(($_).resourceId.videoId))
+        $songs | ForEach-Object {
 
-                youtube-dl -o "$AudioSaveLocation\%(title)s.%(ext)s" `
-                    --ignore-errors --no-mtime --quiet --no-warnings --no-playlist `
-                    --cache-dir "$CacheFolder" -x --audio-format mp3 --audio-quality 0 `
-                    --metadata-from-title "(?P<artist>.+?) - (?P<title>.+)" `
-                    --add-metadata --prefer-ffmpeg "$URLToDownload"
+            if (($_).resourceId.videoId -notcontains '7X1L8_MDj4I' ) {
 
                 if (Get-ChildItem ('{0}\{1}.mp3' -f $AudioSaveLocation, (($_).title -replace '"', '''' -replace '\?', '')) -ErrorAction SilentlyContinue) {
-                    Write-Log ('Dowloaded: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'logs'
+                    Write-Log ('Present: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'oklogs'
                 }
+
                 else {
-                    Write-Log ('Unavailable: {0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'errorlogs'
+                    Write-Log ('Absent: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'logs'
+
+                    $URLToDownload = ('https://music.youtube.com/watch?v={0}&list=PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7' -f $(($_).resourceId.videoId))
+
+                    youtube-dl -o "$AudioSaveLocation\%(title)s.%(ext)s" `
+                        --ignore-errors --no-mtime --quiet --no-warnings --no-playlist `
+                        --cache-dir "$CacheFolder" -x --audio-format mp3 --audio-quality 0 `
+                        --metadata-from-title "(?P<artist>.+?) - (?P<title>.+)" `
+                        --add-metadata --prefer-ffmpeg "$URLToDownload"
+
+                    if (Get-ChildItem ('{0}\{1}.mp3' -f $AudioSaveLocation, (($_).title -replace '"', '''' -replace '\?', '')) -ErrorAction SilentlyContinue) {
+                        Write-Log ('Dowloaded: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'logs'
+                    }
+                    else {
+                        Write-Log ('Unavailable: {0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'errorlogs'
+                    }
                 }
             }
         }
+    }
+
+    else {
+        Write-Log 'Network conection is absent' 'errorlogs'
     }
 
     $number = 0
