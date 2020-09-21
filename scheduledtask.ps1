@@ -2,7 +2,13 @@ param(
     [Parameter(Mandatory=$false)]
     [switch]$rm,
     [Parameter(Mandatory=$false)]
-    [switch]$alarm
+    [switch]$alarm,
+    [Parameter(Mandatory=$false)]
+    [switch]$op,
+    [Parameter(Mandatory=$false)]
+    [String]$playlist = 'PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7',
+    [Parameter(Mandatory=$false)]
+    [String]$playlistTitle = 'AWESOME'
 )
 
 
@@ -94,6 +100,13 @@ function Invoke-MyRestMethod {
 
 function Alarm {
 
+    param(
+        [Parameter(Mandatory=$false)]
+        [String]$playlist,
+        [Parameter(Mandatory=$false)]
+        [String]$playlistTitle
+    )
+
     MyVolume -ErrorAction SilentlyContinue
 
     $adapters = @('Wi-Fi', 'Ethernet')
@@ -106,14 +119,12 @@ function Alarm {
         }
     } | Get-Unique
 
-    $AudioSaveLocation = "$ENV:USERPROFILE\Music\AWESOME"
     $CacheFolder = "$ENV:USERPROFILE\EasyMorning\cache"
 
-    if ($net -contains 'Up') {
+    if ($net -contains 'Up' -and $op -eq $false) {
 
-        $key      = Get-Content ('{0}\key' -f $PSScriptRoot)
-        $url      = 'https://www.googleapis.com/youtube/v3'
-        $playlist = 'PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7'
+        $key = Get-Content ('{0}\key' -f $PSScriptRoot)
+        $url = 'https://www.googleapis.com/youtube/v3'
 
         $totalResults = (Invoke-MyRestMethod $url $key $playlist).pageInfo.totalResults
 
@@ -130,12 +141,6 @@ function Alarm {
             $tokens += $nextPageToken
 
             $nextPageToken = (Invoke-MyRestMethod $url $key $playlist $nextPageToken).nextPageToken
-
-        }
-
-        $songs = $tokens | ForEach-Object {
-
-            (Invoke-MyRestMethod $url $key $playlist $_).items.snippet
 
         }
 
@@ -157,11 +162,17 @@ function Alarm {
 
         $AudioSaveLocation = "$ENV:USERPROFILE\Music\$playlistTitle"
 
+        $songs = $tokens | ForEach-Object {
+
+            (Invoke-MyRestMethod $url $key $playlist $_).items.snippet
+
+        }
+
         $songs | ForEach-Object {
 
             if (($_).resourceId.videoId -notcontains '7X1L8_MDj4I' ) {
 
-                if (Get-ChildItem ('{0}\{1}.mp3' -f $AudioSaveLocation, (($_).title -replace '"', '''' -replace '\?', '')) -ErrorAction SilentlyContinue) {
+                if (Get-ChildItem ('{0}\{1}.mp3' -f $AudioSaveLocation, (($_).title -replace '"', '''' -replace '\?', '' -replace '\[', '*' -replace '\]', '*')) -ErrorAction SilentlyContinue) {
                     Write-Log ('Present: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'oklogs'
                 }
 
@@ -176,7 +187,7 @@ function Alarm {
                         --metadata-from-title "(?P<artist>.+?) - (?P<title>.+)" `
                         --add-metadata --prefer-ffmpeg "$URLToDownload"
 
-                    if (Get-ChildItem ('{0}\{1}.mp3' -f $AudioSaveLocation, (($_).title -replace '"', '''' -replace '\?', '')) -ErrorAction SilentlyContinue) {
+                    if (Get-ChildItem ('{0}\{1}.mp3' -f $AudioSaveLocation, (($_).title -replace '"', '''' -replace '\?', '' -replace '\[', '*' -replace '\]', '*')) -ErrorAction SilentlyContinue) {
                         Write-Log ('Dowloaded: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'logs'
                     }
                     else {
@@ -188,7 +199,13 @@ function Alarm {
     }
 
     else {
-        Write-Log 'Network conection is absent' 'errorlogs'
+        $AudioSaveLocation = "$ENV:USERPROFILE\Music\$playlistTitle"
+        if ($op -eq $false) {
+            Write-Log 'Network conection is absent' 'errorlogs'
+        }
+        else {
+            Write-Log ('"{0}" playlist is playing' -f $playlistTitle) 'errorlogs'
+        }
     }
 
     $number = 0
@@ -269,7 +286,7 @@ function SheduleTask {
 
 if ($alarm -eq $true) {
 
-    Alarm
+    Alarm $playlist $playlistTitle
 
 }
 
