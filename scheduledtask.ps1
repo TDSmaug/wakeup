@@ -70,12 +70,12 @@ function Write-Log {
 
     if (!(Get-ChildItem ('{0}\EasyMorning\logs' -f $ENV:USERPROFILE) -ErrorAction SilentlyContinue)) {
 
-        New-Item -ItemType Directory -Force -Path ('{0}\EasyMorning\logs' -f $ENV:USERPROFILE) | Out-Null
+        New-Item -ItemType Directory -Force -Path ('{0}\logs' -f $PSScriptRoot) | Out-Null
 
     }
 
-    Write-Output "$(Get-Date) $text" >> ('{0}\EasyMorning\logs\{1} - {2}.txt' `
-        -f $ENV:USERPROFILE, (Get-Date).ToString("dd.MM.yyyy"), $tofile)
+    Write-Output "$(Get-Date) $text" >> ('{0}\logs\{1} - {2}.txt' `
+        -f $PSScriptRoot, (Get-Date).ToString("dd.MM.yyyy"), $tofile)
 }
 
 
@@ -119,7 +119,7 @@ function Alarm {
         }
     } | Get-Unique
 
-    $CacheFolder = "$ENV:USERPROFILE\EasyMorning\cache"
+    $CacheFolder = "$PSScriptRoot\cache"
 
     if ($net -contains 'Up' -and $op -eq $false) {
 
@@ -147,7 +147,7 @@ function Alarm {
         $channelId = (Invoke-MyRestMethod $url $key $playlist).items.snippet[0].channelId
 
         $myplaylists = (
-            
+
         Invoke-RestMethod `
             -Uri ('{0}/playlists?key={1}&part=snippet&maxResults=50&channelId={2}' -f $url, $key, $channelId) `
             -Method Get `
@@ -179,7 +179,7 @@ function Alarm {
                 else {
                     Write-Log ('Absent: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'logs'
 
-                    $URLToDownload = ('https://music.youtube.com/watch?v={0}&list=PLq5DDV1fyL0Rc26gkELyg16cX4-z50IE7' -f $(($_).resourceId.videoId))
+                    $URLToDownload = ('https://www.youtube.com/watch?v={0}&list={1}' -f $(($_).resourceId.videoId), $playlist)
 
                     youtube-dl -o "$AudioSaveLocation\%(title)s.%(ext)s" `
                         --ignore-errors --no-mtime --quiet --no-warnings --no-playlist `
@@ -216,7 +216,7 @@ function Alarm {
 
         [audio]::Volume = ($number * 0.1)
         Write-Log ('Playing({0}%) : "{1}"' -f $($number * 10), ($_).Name) 'playlogs'
-        
+
         Add-Type -AssemblyName presentationCore
         $mediaPlayer = New-Object system.windows.media.mediaplayer
         $mediaPlayer.open(($_).FullName)
