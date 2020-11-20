@@ -144,22 +144,6 @@ function Alarm {
 
         }
 
-        $channelId = (Invoke-MyRestMethod $url $key $playlist).items.snippet[0].channelId
-
-        $myplaylists = (
-
-        Invoke-RestMethod `
-            -Uri ('{0}/playlists?key={1}&part=snippet&maxResults=50&channelId={2}' -f $url, $key, $channelId) `
-            -Method Get `
-            -UseBasicParsing
-        ).items
-
-        $playlistTitle = $myplaylists | ForEach-Object {
-            if ($_.id -contains $playlist) {
-                $_.snippet.title
-            }
-        }
-
         $AudioSaveLocation = "$ENV:USERPROFILE\Music\$playlistTitle"
 
         $songs = $tokens | ForEach-Object {
@@ -179,7 +163,7 @@ function Alarm {
                 else {
                     Write-Log ('Absent: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'logs'
 
-                    $URLToDownload = ('https://www.youtube.com/watch?v={0}&list={1}' -f $(($_).resourceId.videoId), $playlist)
+                    $URLToDownload = ('https://music.youtube.com/watch?v={0}&list={1}' -f $(($_).resourceId.videoId), $playlist)
 
                     youtube-dl -o "$AudioSaveLocation\%(title)s.%(ext)s" `
                         --ignore-errors --no-mtime --quiet --no-warnings --no-playlist `
@@ -191,7 +175,7 @@ function Alarm {
                         Write-Log ('Dowloaded: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'logs'
                     }
                     else {
-                        Write-Log ('Unavailable: {0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'errorlogs'
+                        Write-Log ('Unavailable: "{0}" - "{1}"' -f ($_).resourceId.videoId, ($_).title) 'errorlogs'
                     }
                 }
             }
@@ -212,9 +196,11 @@ function Alarm {
 
     ((Get-ChildItem $AudioSaveLocation) | Sort-Object { Get-Random } ) | ForEach-Object {
 
-        if ($number -lt 10) { $number++ }
-
-        [audio]::Volume = ($number * 0.1)
+        if ($number -lt 10) { 
+            $number++
+            [audio]::Volume = ($number * 0.1)
+        }
+        
         Write-Log ('Playing({0}%) : "{1}"' -f $($number * 10), ($_).Name) 'playlogs'
 
         Add-Type -AssemblyName presentationCore
@@ -256,7 +242,7 @@ function SheduleTask {
 
     $taskName = 'WakeUp'
     $Trigger = New-ScheduledTaskTrigger -At 9:30am -Weekly -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday
-    $Action = New-ScheduledTaskAction -Execute "powershell" -Argument "$PSCommandPath -alarm"
+    $Action = New-ScheduledTaskAction -Execute "powershell" -Argument "$PSCommandPath -alarm -playlist $playlist -playlistTitle $playlistTitle"
     $Settings = New-ScheduledTaskSettingsSet -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -Hidden
     $Principal = New-ScheduledTaskPrincipal -UserId "$($env:USERDOMAIN)\$($env:USERNAME)" -LogonType S4U -RunLevel Highest
 
